@@ -462,7 +462,7 @@ abstract class TestAudioActivity extends AppCompatActivity {
         mStreamSniffer = new MyStreamSniffer();
     }
 
-    private void updateNativeAudioParameters() {
+    protected void updateNativeAudioParameters() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
             AudioManager myAudioMgr = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
             String text = myAudioMgr.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE);

@@ -17,11 +17,16 @@
 package com.mobileer.oboetester;
 
 import android.content.Intent;
+import android.media.AudioFormat;
+import android.media.AudioRecord;
+import android.media.MediaRecorder;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Process;
+import android.util.Log;
 import android.view.View;
 import android.widget.RadioButton;
 
@@ -30,12 +35,100 @@ import androidx.core.content.FileProvider;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Test Oboe Capture
  */
 
 public class TestInputActivity  extends TestAudioActivity {
+
+
+    public class MicrophoneRecord {
+        private AudioRecord mAudioRecord = null;
+        private int mMinBufferSize = 0;
+        private int mChannelMask = AudioFormat.CHANNEL_IN_STEREO;
+        private int mEncodingType = AudioFormat.ENCODING_PCM_16BIT;
+        private AudioRecodingThread mAudioRecodingThread = null;
+
+        MicrophoneRecord() {
+            Log.i(TAG, "MicrophoneRecord----ctr----");
+        }
+
+        private void initAudioRecord() {
+            try {
+                Log.i(TAG, "initAudioRecord------");
+                mMinBufferSize = AudioRecord.getMinBufferSize(48000, mChannelMask, mEncodingType);
+                if (mMinBufferSize == AudioRecord.ERROR_BAD_VALUE) return;
+                AudioFormat audioFormat = new AudioFormat.Builder()
+                        .setEncoding(mEncodingType)
+                        .setSampleRate(48000)
+                        .setChannelMask(mChannelMask)
+                        .build();
+                mAudioRecord = new AudioRecord.Builder()
+                        .setAudioSource(MediaRecorder.AudioSource.MIC)
+                        .setAudioFormat(audioFormat)
+                        .setBufferSizeInBytes(mMinBufferSize)
+                        .build();
+            } catch (Exception e) {
+
+            }
+        }
+
+        public void startRecoding() {
+            Log.i(TAG, "startRecoding-------");
+            initAudioRecord();
+            if (mAudioRecord == null) return;
+            mAudioRecord.startRecording();
+            if (mAudioRecodingThread == null) {
+                mAudioRecodingThread = new AudioRecodingThread();
+            }
+            mAudioRecodingThread.start();
+        }
+
+        public void stopRecoding() {
+            Log.i(TAG, "stopRecoding-------");
+            try {
+                if (mAudioRecodingThread == null) return;
+                mAudioRecodingThread.stopThread();
+                mAudioRecodingThread.join();
+                if (mAudioRecord != null) {
+                    Log.i(TAG, "stopRecoding mAudioRecord stop!");
+                    mAudioRecord.stop();
+                    Log.i(TAG, "stopRecoding mAudioRecord release!");
+                    mAudioRecord.release();
+                }
+                mAudioRecodingThread = null;
+                mAudioRecord = null;
+                Log.i(TAG, "stopRecoding------- done!");
+            } catch (Exception e) {
+                Log.i(TAG, "exception msg:" + e.getMessage());
+            }
+        }
+
+        public class AudioRecodingThread extends Thread {
+            private AtomicBoolean keepAlive = new AtomicBoolean(true);
+
+            @Override
+            public void run() {
+                Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO);
+                while (keepAlive.get()) {
+                    if (mAudioRecord == null) continue;
+                    byte[] buffer = new byte[mMinBufferSize];
+                    int length = mAudioRecord.read(buffer, 0, buffer.length);
+                    if (length == AudioRecord.ERROR_INVALID_OPERATION) {
+                        keepAlive.set(false);
+                        return;
+                    }
+                }
+                Log.i(TAG, "stopRecoding thread done!");
+            }
+            public void stopThread() {
+                keepAlive.set(false);
+            }
+        }
+    }
+
 
     protected AudioInputTester mAudioInputTester;
     // Note that this must match the number of volume bars defined in the layout file.
@@ -44,6 +137,7 @@ public class TestInputActivity  extends TestAudioActivity {
     private InputMarginView mInputMarginView;
     private int mInputMarginBursts = 0;
     private WorkloadView mWorkloadView;
+    private MicrophoneRecord microphoneRecord = new MicrophoneRecord();
 
     public native void setMinimumFramesBeforeRead(int frames);
     public native int saveWaveFile(String absolutePath);
@@ -126,7 +220,10 @@ public class TestInputActivity  extends TestAudioActivity {
     @Override
     public void openAudio(View view) {
         try {
+            microphoneRecord.startRecoding();
+            microphoneRecord.stopRecoding();
             openAudio();
+            startAudio();
         } catch (Exception e) {
             showErrorToast(e.getMessage());
         }
